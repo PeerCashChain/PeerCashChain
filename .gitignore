@@ -3,3 +3,11 @@ build/
 /tmp/
 /geth
 .vscode/
+
+# NEVER commit these
+data/
+**/keystore/
+**/pass.txt
+*.bak
+RandomX/
+build/bin/

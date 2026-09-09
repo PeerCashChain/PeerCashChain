@@ -35,17 +35,21 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// blockReward is the wei credited to every block's coinbase, forever — a
-// fixed, uncapped issuance schedule (Ethereum PoW-style) rather than a
-// Bitcoin-style halving. RandomX has no uncles, so there are no uncle
-// rewards.
-var blockReward = uint256.NewInt(9e+18)
+// PeerCash issuance: Bitcoin-style. Initial reward 1 PEER, halving every
+// 10,500,000 blocks, converging to a 21,000,000 PEER cap.
+var peerCashInitialReward = uint256.NewInt(1e18) // 1 PEER = 1e18 wei
 
-// calcBlockReward returns the block reward at the given height. The reward is
-// constant regardless of height; number is accepted for API stability (e.g.
-// if a future fork ever needs to change issuance at a given block).
+const peerCashHalvingInterval = 10_500_000 // blocks per halving (~3.3 yr at 10s)
+
+// calcBlockReward returns the block reward at the given height, halving every
+// peerCashHalvingInterval blocks. Integer right-shift performs the halving;
+// once exhausted it returns zero (21M cap reached, no further issuance).
 func calcBlockReward(number uint64) *uint256.Int {
-	return new(uint256.Int).Set(blockReward)
+	era := number / peerCashHalvingInterval
+	if era >= 64 {
+		return uint256.NewInt(0)
+	}
+	return new(uint256.Int).Rsh(peerCashInitialReward, uint(era))
 }
 
 // Mode selects how strictly the engine validates proofs-of-work. The non-normal
