@@ -649,6 +649,16 @@ func (h *handler) minedBroadcastLoop() {
 	for {
 		select {
 		case ev := <-headCh:
+			// Don't re-announce blocks imported during backfill. The backfill
+			// goroutine inserts up to 128 blocks per batch, each firing a
+			// ChainHeadEvent. Re-announcing all of them would burst 128 NewBlock
+			// messages at the serving peer, exhausting its announce token bucket
+			// (burst=16, hard-limit at 80) and getting us banned mid-sync.
+			// Fresh heads (mined locally or received via gossip outside of a
+			// backfill) are still broadcast normally.
+			if h.backfilling.Load() {
+				continue
+			}
 			if block := h.chain.GetBlock(ev.Header.Hash(), ev.Header.Number.Uint64()); block != nil {
 				h.BroadcastBlock(block)
 			}

@@ -11,6 +11,7 @@ Environment=GETH_RANDOMX_THREADS=2
 ExecStart=/usr/local/bin/peercash \
   --datadir /home/peercash/.peercash-testnet \
   --nodekey /home/peercash/.peercash-nodekey \
+  --syncmode full \
   --networkid 563321 \
   --port 30303 \
   --nat extip:167.71.186.249 \
