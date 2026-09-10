@@ -232,17 +232,25 @@ func (h *ethHandler) backfill(peer *eth.Peer, target uint64) {
 			return
 		}
 		blocks := h.assembleBlocks(peer, headers)
-		if _, err := h.chain.InsertChain(blocks); err != nil {
-			// We asked this peer for its canonical chain from a common ancestor,
-			// so consensus-invalid data here is the peer's fault: strike it, and
-			// ban + disconnect on repeat offence. (Network errors above, by
-			// contrast, are not counted.)
-			if h.guard.strike(peer.ID()) {
-				h.guard.ban(peer.ID())
-				peer.Disconnect(p2p.DiscSubprotocolError)
+		// Insert one block at a time so that each block's full LWMA ancestor
+		// window (difficultyWindow = 60 headers) is committed to the DB before
+		// the next header is validated. InsertChain calls VerifyHeaders on the
+		// entire slice before writing anything, so batching N > 1 blocks means
+		// chain.GetHeader() returns nil for in-flight ancestors, causing the
+		// LWMA fallback to produce a wrong difficulty and reject valid blocks.
+		for _, block := range blocks {
+			if _, err := h.chain.InsertChain(types.Blocks{block}); err != nil {
+				// We asked this peer for its canonical chain from a common ancestor,
+				// so consensus-invalid data here is the peer's fault: strike it, and
+				// ban + disconnect on repeat offence. (Network errors above, by
+				// contrast, are not counted.)
+				if h.guard.strike(peer.ID()) {
+					h.guard.ban(peer.ID())
+					peer.Disconnect(p2p.DiscSubprotocolError)
+				}
+				log.Debug("RandomX backfill import failed", "block", block.NumberU64(), "err", err)
+				return
 			}
-			log.Debug("RandomX backfill import failed", "from", next, "err", err)
-			return
 		}
 		last := blocks[len(blocks)-1].NumberU64()
 		log.Info("RandomX backfill progress", "imported", next, "to", last, "target", target)
