@@ -21,7 +21,7 @@ import "github.com/ethereum/go-ethereum/common"
 // MainnetBootnodes are the enode URLs of the P2P bootstrap nodes running on
 // the PeerCash testnet (chain ID 563321).
 var MainnetBootnodes = []string{
-	"enode://877cd4741e269d4cdee88a4f749fb670c92e0d4ae2fbb9cc7f23c481734bded8dbb506585f6467d9cae587bc12fc9036a3020f9aeaef860d31d63bd694f1f6fd@167.71.186.249:30303",
+	"enode://39c0e17ff5f0020a70f4f4a9a69c09d9f962e659d9840abb44bfafd335ae934d94b7b2832840da192eae4637ed62fa9e84ac08cd915ece86907241d5bf8cc769@167.71.186.249:30303",
 }
 
 // MainnetStaticNodes are the enode URLs of known-good PeerCash nodes that
@@ -33,7 +33,7 @@ var MainnetBootnodes = []string{
 // once to seed discovery), static nodes are dialed and redialed for the
 // lifetime of the process.
 var MainnetStaticNodes = []string{
-	"enode://877cd4741e269d4cdee88a4f749fb670c92e0d4ae2fbb9cc7f23c481734bded8dbb506585f6467d9cae587bc12fc9036a3020f9aeaef860d31d63bd694f1f6fd@167.71.186.249:30303",
+	"enode://39c0e17ff5f0020a70f4f4a9a69c09d9f962e659d9840abb44bfafd335ae934d94b7b2832840da192eae4637ed62fa9e84ac08cd915ece86907241d5bf8cc769@167.71.186.249:30303",
 }
 
 // HoodiBootnodes are the enode URLs of the P2P bootstrap nodes running on the

@@ -1,0 +1,27 @@
+[Unit]
+Description=PeerCash Testnet node (bootnode + RPC + miner)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=peercash
+Group=peercash
+WorkingDirectory=/home/peercash
+Environment=GETH_RANDOMX_THREADS=2
+ExecStart=/usr/local/bin/peercash \
+  --datadir /home/peercash/.peercash-testnet \
+  --nodekey /home/peercash/.peercash-nodekey \
+  --networkid 563321 \
+  --port 30303 \
+  --nat extip:167.71.186.249 \
+  --http --http.addr 0.0.0.0 --http.port 8545 \
+  --http.api eth,net,web3 \
+  --http.corsdomain "*" --http.vhosts "*" \
+  --mine --miner.etherbase 0x03c670916D984E8D2Ff278377b38a7B4a5933BBB \
+  --verbosity 3
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
