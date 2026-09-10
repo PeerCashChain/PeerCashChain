@@ -1288,7 +1288,7 @@ func setBootstrapNodes(ctx *cli.Context, cfg *p2p.Config) {
 // reverting to pre-configured ones if none have been specified. Unlike
 // bootstrap nodes (used once to seed discovery), static nodes are dialed and
 // redialed for the lifetime of the process, which is what actually keeps a
-// small network like Ducros mainnet meshed -- discovery alone gets drowned
+// small network like PeerCash meshed -- discovery alone gets drowned
 // out by unrelated public devp2p scanner traffic (see MainnetStaticNodes).
 func setStaticNodes(ctx *cli.Context, cfg *p2p.Config) {
 	urls := params.MainnetStaticNodes
