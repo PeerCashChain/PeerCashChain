@@ -10,7 +10,16 @@
 # nothing here freezes the genesis -- freezing (recording the SHA256) is yours.
 #
 # Usage:
-#   ./test-genesis.sh
+#   ./test-genesis.sh                 # quick test: determinism + alloc + block 1
+#   CALIBRATE=1 ./test-genesis.sh     # also mine past the LWMA window and report
+#                                     # steady-state block interval + difficulty
+#
+# The quick test only proves block 1 mines at the GENESIS difficulty. Block 1's
+# solve time is NOT steady-state: during the LWMA warmup (blocks 1..window) the
+# retarget holds the genesis value, and real timing only settles once LWMA is
+# active (block window+1 onward). Use CALIBRATE=1 to tune the genesis difficulty
+# against that settled timing instead of the genesis value.
+#
 # Env overrides:
 #   BIN           path to the peercash binary (default: /usr/local/bin/peercash,
 #                 then ../build/geth-randomx). Legacy: GETH= is still honored.
@@ -18,6 +27,11 @@
 #   RUNS          number of deterministic init runs     (default: 5)
 #   MINE_TIMEOUT  seconds to wait for block 1            (default: 600)
 #   GETH_RANDOMX_THREADS  mining threads (passed through to the binary)
+#   Calibration mode (only when CALIBRATE is set to a non-empty/1/true value):
+#   CALIBRATE_BLOCKS   target height to mine to          (default: 75)
+#   CALIBRATE_TIMEOUT  seconds to wait for that height   (default: 1800)
+#   LWMA_WINDOW        LWMA warmup window in blocks       (default: 60; interval
+#                      is averaged over blocks LWMA_WINDOW+1 .. target)
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,6 +51,26 @@ GENESIS="${GENESIS:-$HERE/genesis.json}"
 RUNS="${RUNS:-5}"
 MINE_TIMEOUT="${MINE_TIMEOUT:-600}"
 EXPECT_CHAINID=620156
+
+# Calibration mode (opt-in). When enabled, Phase 3 mines to CALIBRATE_BLOCKS
+# instead of stopping at block 1, then reports steady-state timing/difficulty.
+CALIBRATE="${CALIBRATE:-}"
+case "$CALIBRATE" in 1|true|TRUE|yes|YES|on|ON) CALIBRATE=1 ;; *) CALIBRATE="" ;; esac
+CALIBRATE_BLOCKS="${CALIBRATE_BLOCKS:-75}"
+CALIBRATE_TIMEOUT="${CALIBRATE_TIMEOUT:-1800}"
+LWMA_WINDOW="${LWMA_WINDOW:-60}"
+
+# How high to mine and how long to wait depend on the mode.
+if [ -n "$CALIBRATE" ]; then
+  TARGET_BLOCK="$CALIBRATE_BLOCKS"
+  WAIT_TIMEOUT="$CALIBRATE_TIMEOUT"
+  if [ "$TARGET_BLOCK" -le "$LWMA_WINDOW" ] 2>/dev/null; then
+    fail "CALIBRATE_BLOCKS ($TARGET_BLOCK) must exceed LWMA_WINDOW ($LWMA_WINDOW) to measure steady state"
+  fi
+else
+  TARGET_BLOCK=1
+  WAIT_TIMEOUT="$MINE_TIMEOUT"
+fi
 
 # Run the node binary with GETH stripped from its environment (shell-only var).
 run_bin() { env -u GETH "$BIN" "$@"; }
@@ -151,21 +185,21 @@ run_bin --datadir "$d" \
   --verbosity 3 >"$WORK/mine.log" 2>&1 &
 GETHPID=$!
 
-info "  node started (pid $GETHPID); waiting up to ${MINE_TIMEOUT}s for block 1..."
+info "  node started (pid $GETHPID); waiting up to ${WAIT_TIMEOUT}s for block ${TARGET_BLOCK}..."
 BN=0
 waited=0
-while [ "$waited" -lt "$MINE_TIMEOUT" ]; do
+while [ "$waited" -lt "$WAIT_TIMEOUT" ]; do
   if ! kill -0 "$GETHPID" >/dev/null 2>&1; then
     cat "$WORK/mine.log" >&2; fail "node exited before producing a block"
   fi
   BN="$(run_bin attach "$ipc" --exec 'eth.blockNumber' 2>/dev/null | tr -dc '0-9')"
   BN="${BN:-0}"
-  if [ "$BN" -ge 1 ] 2>/dev/null; then break; fi
+  if [ "$BN" -ge "$TARGET_BLOCK" ] 2>/dev/null; then break; fi
   sleep 3
   waited=$((waited + 3))
 done
 
-[ "$BN" -ge 1 ] 2>/dev/null || { tail -40 "$WORK/mine.log" >&2; fail "no block mined within ${MINE_TIMEOUT}s"; }
+[ "$BN" -ge "$TARGET_BLOCK" ] 2>/dev/null || { tail -40 "$WORK/mine.log" >&2; fail "only reached block $BN (target $TARGET_BLOCK) within ${WAIT_TIMEOUT}s"; }
 
 B0="$(run_bin attach "$ipc" --exec 'eth.getBlock(0).hash' 2>/dev/null | tr -d '"' | tr -d '[:space:]')"
 D1="$(run_bin attach "$ipc" --exec 'eth.getBlock(1).difficulty' 2>/dev/null | tr -dc '0-9')"
@@ -188,12 +222,64 @@ info "  block 1 number = $BN, difficulty = $D1"
 
 info "Phase 3 PASS: mined block $BN; block 1 difficulty matches genesis; node healthy"
 
+############################################
+# Phase 4 (optional): steady-state calibration
+############################################
+# Only runs under CALIBRATE=1. Blocks 1..LWMA_WINDOW hold the genesis difficulty
+# (warmup); real timing settles once LWMA is active, so we measure the average
+# block interval and the retargeted difficulty over blocks LWMA_WINDOW+1..tip.
+CAL_AVG=""; CAL_DTIP=""; CAL_DTIP_HEX=""; CAL_DAVG=""; CAL_DMIN=""; CAL_DMAX=""; CAL_WS=""; CAL_MAX=""
+if [ -n "$CALIBRATE" ]; then
+  info "Phase 4: calibrate steady-state over blocks $((LWMA_WINDOW + 1))..$BN"
+  # One attach call dumps "number timestamp difficulty" for every block.
+  STATS_JS="var o=[];for(var i=0;i<=$BN;i++){var b=eth.getBlock(i);if(b==null){continue;}o.push(b.number+' '+b.timestamp+' '+(''+b.difficulty));}console.log(o.join('\n'));"
+  run_bin attach "$ipc" --exec "$STATS_JS" 2>/dev/null \
+    | tr -d '\r' | grep -E '^[0-9]+ [0-9]+ [0-9]+$' > "$WORK/blocks.txt"
+  [ -s "$WORK/blocks.txt" ] || fail "calibration: could not collect per-block data"
+
+  CAL_OUT="$(awk -v ws="$((LWMA_WINDOW + 1))" '
+    { n=$1; ts[n]=$2; df[n]=$3; if (n>max) max=n }
+    END {
+      if (max < ws) { print "ERR"; exit 0 }
+      span = ts[max] - ts[ws-1];     # seconds spanned by the LWMA-active range
+      nint = max - (ws-1);           # intervals in that range
+      avg  = (nint>0) ? span/nint : 0;
+      sum=0; cnt=0; dmin=df[ws]; dmax=df[ws];
+      for (i=ws; i<=max; i++) {
+        sum += df[i]; cnt++;
+        if (df[i] < dmin) dmin = df[i];
+        if (df[i] > dmax) dmax = df[i];
+      }
+      davg = (cnt>0) ? sum/cnt : 0;
+      printf "%d %d %.2f %s %.0f %.0f %.0f\n", ws, max, avg, df[max], davg, dmin, dmax;
+    }' "$WORK/blocks.txt")"
+
+  [ "$CAL_OUT" = "ERR" ] && fail "calibration: not enough blocks past the LWMA window (have $BN, need > $LWMA_WINDOW)"
+  read -r CAL_WS CAL_MAX CAL_AVG CAL_DTIP CAL_DAVG CAL_DMIN CAL_DMAX <<EOF
+$CAL_OUT
+EOF
+  CAL_DTIP_HEX="$(printf '0x%x' "$CAL_DTIP" 2>/dev/null || echo 'n/a')"
+
+  info "Phase 4 results (steady-state, blocks ${CAL_WS}..${CAL_MAX}):"
+  info "  avg block interval = ${CAL_AVG}s  (LWMA target is 12s)"
+  info "  retargeted difficulty = ${CAL_DTIP} (${CAL_DTIP_HEX}) at tip; avg ${CAL_DAVG}, min ${CAL_DMIN}, max ${CAL_DMAX}"
+fi
+
 echo
 echo "================ ALL CHECKS PASSED ================"
 echo " genesis hash (deterministic): $FIRST_HASH"
 echo " chainId:                      $EXPECT_CHAINID"
 echo " alloc:                        empty (no premine)"
 echo " block 1 difficulty:           $GENDIFF_DEC ($GENDIFF_HEX)"
+if [ -n "$CALIBRATE" ]; then
+echo
+echo " -- calibration (steady-state, blocks ${CAL_WS}..${CAL_MAX}) --"
+echo " avg block interval:           ${CAL_AVG}s (LWMA target 12s)"
+echo " retargeted difficulty (tip):  ${CAL_DTIP} (${CAL_DTIP_HEX})"
+echo " retargeted difficulty range:  min ${CAL_DMIN}, avg ${CAL_DAVG}, max ${CAL_DMAX}"
+echo " NOTE: tune GENESIS difficulty toward the retargeted value above, not the"
+echo "       genesis value -- genesis difficulty only sets the warmup solve time."
+fi
 echo
 echo " SHA256 of genesis.json (record this when you freeze it):"
 if command -v sha256sum >/dev/null 2>&1; then sha256sum "$GENESIS"; else shasum -a 256 "$GENESIS"; fi
