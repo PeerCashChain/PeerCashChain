@@ -17,7 +17,7 @@ hosting (servers, public IPs, DNS) is yours to provide.
 ```bash
 EXTIP=<public-ip> ./bootnode.sh
 # In another shell, grab its enode:
-../build/geth-randomx attach ~/.duchain-testnet-boot/geth.ipc --exec admin.nodeInfo.enode
+../build/geth-randomx attach ~/.duchain-testnet-boot/peercash.ipc --exec admin.nodeInfo.enode
 ```
 Put that enode (with the public IP) into `env.sh` → `BOOTNODES` on every other host.
 

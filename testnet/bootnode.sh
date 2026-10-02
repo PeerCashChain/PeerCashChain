@@ -17,7 +17,7 @@ if [ ! -f "$NODEKEY" ]; then
 fi
 
 echo ">> Starting bootnode on port $PORT (datadir $DATADIR)"
-echo ">> Once up, run:  geth attach $DATADIR/geth.ipc --exec admin.nodeInfo.enode"
+echo ">> Once up, run:  peercash attach $DATADIR/peercash.ipc --exec admin.nodeInfo.enode"
 echo ">> and put that enode (with public IP) into env.sh BOOTNODES."
 
 exec "$GETH" --datadir "$DATADIR" \

@@ -160,7 +160,7 @@ GENDIFF_DEC=$(( GENDIFF_HEX ))
 info "  genesis difficulty = $GENDIFF_HEX ($GENDIFF_DEC)"
 
 d="$WORK/mine"
-ipc="$d/geth.ipc"
+ipc="$d/peercash.ipc"
 mkdir -p "$d"
 run_bin --datadir "$d" init "$GENESIS" >"$WORK/mine-init.log" 2>&1 \
   || { cat "$WORK/mine-init.log" >&2; fail "mine-datadir init failed"; }

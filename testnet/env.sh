@@ -25,7 +25,7 @@ DATADIR="${DATADIR:-$HOME/.duchain-testnet}"
 EXTIP="${EXTIP:-}"
 
 init_if_needed() {
-  if [ ! -d "$DATADIR/geth/chaindata" ]; then
+  if [ ! -d "$DATADIR/peercash/chaindata" ]; then
     echo ">> Initialising genesis in $DATADIR"
     "$GETH" --datadir "$DATADIR" init "$GENESIS"
   fi
