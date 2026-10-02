@@ -131,11 +131,23 @@ mkdir -p "$d"
 run_bin --datadir "$d" init "$GENESIS" >"$WORK/mine-init.log" 2>&1 \
   || { cat "$WORK/mine-init.log" >&2; fail "mine-datadir init failed"; }
 
+# Create a REAL throwaway miner account and mine to it. The sealer only produces
+# blocks for an etherbase that exists in this datadir's keystore; mining to a
+# placeholder address (e.g. 0x...001) silently never seals -- which previously
+# looked like a difficulty problem but was this bug. The key is disposable: it
+# lives only in the temp datadir, which cleanup() removes on exit.
+PWFILE="$d/miner-pass.txt"
+echo "peercash-genesis-test" > "$PWFILE"
+ETHERBASE="$(run_bin --datadir "$d" account new --password "$PWFILE" 2>&1 \
+  | grep -oiE '0x[0-9a-f]{40}' | head -n1)"
+[ -n "$ETHERBASE" ] || fail "could not create/parse throwaway miner account"
+info "  mining to throwaway account $ETHERBASE"
+
 run_bin --datadir "$d" \
   --networkid "$EXPECT_CHAINID" \
   --nodiscover --maxpeers 0 \
   --ipcpath "$ipc" \
-  --mine --miner.etherbase 0x0000000000000000000000000000000000000001 \
+  --mine --miner.etherbase "$ETHERBASE" \
   --verbosity 3 >"$WORK/mine.log" 2>&1 &
 GETHPID=$!
 
