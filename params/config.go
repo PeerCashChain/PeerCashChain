@@ -28,15 +28,18 @@ import (
 
 // Genesis hashes to enforce below configs on.
 var (
-	MainnetGenesisHash = common.HexToHash("0xd745e1d9b8b05157685ade60e8dfde6580990a339f66cb78a75c2c91f56c46f8")
+	// TODO(freeze): NOT REAL. The all-zero value below is a deliberate sentinel,
+	// not the genesis hash. Set this only after the mainnet genesis is frozen:
+	// run mainnet/test-genesis.sh, take the resulting genesis block hash, and
+	// record it here, then rebuild. Do not guess -- a plausible-but-wrong hash
+	// would break genesis validation.
+	MainnetGenesisHash = common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")
 	HoleskyGenesisHash = common.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
 	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
 	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
 )
 
 func newUint64(val uint64) *uint64 { return &val }
-
-func newAddress(val common.Address) *common.Address { return &val }
 
 var (
 	MainnetTerminalTotalDifficulty, _ = new(big.Int).SetString("58_750_000_000_000_000_000_000", 0)
@@ -47,7 +50,7 @@ var (
 	// for the real Ethereum network, so this name now refers to duchain's own
 	// mainnet (mirroring how upstream bakes its mainnet directly into the binary).
 	MainnetChainConfig = &ChainConfig{
-		ChainID:             big.NewInt(271017),
+		ChainID:             big.NewInt(620156),
 		HomesteadBlock:      big.NewInt(0),
 		EIP150Block:         big.NewInt(0),
 		EIP155Block:         big.NewInt(0),
@@ -58,11 +61,10 @@ var (
 		IstanbulBlock:       big.NewInt(0),
 		BerlinBlock:         big.NewInt(0),
 		LondonBlock:         big.NewInt(0),
-		RandomX: &RandomXConfig{
-			TipTreasury:        newAddress(common.HexToAddress("0xEc4824ADdd1E160De6a13003bD2b815c2Fd969F6")),
-			BaseFeeTreasury:    newAddress(common.HexToAddress("0xf6d08E1255Dbd706C5e824FAC237352564DF987D")),
-			TreasuryFeePercent: 10,
-		},
+		// Fair launch: full EIP-1559 base-fee burn, no treasury fee skim.
+		// An empty (but non-nil) RandomX config activates RandomX PoW with
+		// zero fee diversion, matching the mainnet genesis "randomx": {}.
+		RandomX: &RandomXConfig{},
 	}
 	// HoleskyChainConfig contains the chain parameters to run a node on the Holesky test network.
 	HoleskyChainConfig = &ChainConfig{

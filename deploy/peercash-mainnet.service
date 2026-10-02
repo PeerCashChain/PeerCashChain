@@ -1,0 +1,41 @@
+# PeerCash MAINNET systemd unit (chainId 620156).
+#
+# PROPOSAL / TEMPLATE -- not a drop-in. Before enabling, a human MUST replace
+# every value marked REPLACE_ below. Placeholders are intentionally invalid so a
+# copy-paste mistake fails fast instead of mining to a wrong address or dialing
+# the testnet.
+#
+# One-time init on the host (datadir must be empty first):
+#   /usr/local/bin/peercash --datadir /home/peercash/.peercash-mainnet init /path/to/mainnet/genesis.json
+#
+# Keep MAINNET and TESTNET strictly separate: never share this datadir, nodekey,
+# service name, or (if ever co-located on one host) the P2P port with testnet.
+
+[Unit]
+Description=PeerCash Mainnet node (chainId 620156)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=peercash
+Group=peercash
+WorkingDirectory=/home/peercash
+Environment=GETH_RANDOMX_THREADS=2
+ExecStart=/usr/local/bin/peercash \
+  --datadir /home/peercash/.peercash-mainnet \
+  --nodekey /home/peercash/.peercash-mainnet-nodekey \
+  --syncmode full \
+  --networkid 620156 \
+  --port 30303 \
+  --nat extip:REPLACE_MAINNET_PUBLIC_IP \
+  --http --http.addr 0.0.0.0 --http.port 8545 \
+  --http.api eth,net,web3 \
+  --http.corsdomain "*" --http.vhosts "*" \
+  --mine --miner.etherbase REPLACE_MAINNET_ETHERBASE_ADDRESS \
+  --verbosity 3
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
