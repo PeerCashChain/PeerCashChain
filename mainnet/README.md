@@ -17,7 +17,7 @@ systemd service, or (if co-located) P2P port with testnet.
 ## Proposed parameters
 - chainId / networkId: **620156** (claimed/verified free in the ethereum-lists registry).
 - Consensus: RandomX PoW with LWMA retarget (target **12 s/block**, window **60**).
-- Genesis difficulty: **0x20000** (131072) -- PROPOSED; see "Difficulty" below.
+- Genesis difficulty: **0x2000** (8192) -- see "Difficulty" below.
 - Block reward: **1 PEER**, halving every **10,500,000** blocks, converging to the
   **21,000,000 PEER** hard cap. (Enforced in `consensus/randomx`, chain-wide.)
 - Fees: full EIP-1559 base-fee burn, **no treasury skim** (`"randomx": {}`).
@@ -31,17 +31,19 @@ This genesis agrees with the binary's compiled-in `MainnetChainConfig`
 behaves identically whether launched from this `genesis.json` or the compiled-in
 default.
 
-## Difficulty (why 0x20000)
+## Difficulty (why 0x2000)
 During the first 60 blocks the LWMA retarget has no window yet and simply holds
 the genesis difficulty, so **block 1 mines at exactly the genesis difficulty**;
 only from block 61 does the retarget steer toward the 12 s target. The genesis
 value therefore sets the solve time of the first ~60 blocks.
 
-`0x20000` is the value proven on the live testnet, aimed at a modest launch
-hashrate. The error is self-correcting either way: set it too low and the first
-blocks mine fast until LWMA raises it; too high and the warmup is slow until LWMA
-lowers it -- neither is dangerous. If you expect a very small launch (one or two
-light-mode CPUs), `0x8000` (32768) gives a quicker warmup. Final call is yours.
+`0x2000` (8192) is sized for realistic launch hardware -- one to a few modest
+CPU boxes. The earlier `0x20000` (131072) was too high: a 2-core box mining flat
+out (both cores pegged) could not find block 1 within 600 s, which would stall a
+small launch. Lowering it by 16x brings first-block solve time back into range.
+The error is self-correcting either way: set it too low and the first blocks mine
+fast until LWMA raises it; too high and the warmup is slow until LWMA lowers it --
+neither is dangerous. Final call is yours.
 
 ## Building from source (reproducible)
 Fair-launch credibility depends on anyone being able to build and verify the
