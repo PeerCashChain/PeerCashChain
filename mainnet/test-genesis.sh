@@ -12,7 +12,8 @@
 # Usage:
 #   ./test-genesis.sh
 # Env overrides:
-#   GETH          path to the peercash/geth-randomx binary (default: ../build/geth-randomx)
+#   BIN           path to the peercash binary (default: /usr/local/bin/peercash,
+#                 then ../build/geth-randomx). Legacy: GETH= is still honored.
 #   GENESIS       path to the mainnet genesis.json      (default: ./genesis.json next to this script)
 #   RUNS          number of deterministic init runs     (default: 5)
 #   MINE_TIMEOUT  seconds to wait for block 1            (default: 600)
@@ -20,16 +21,30 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GETH="${GETH:-$HERE/../build/geth-randomx}"
+# Binary path. Honor BIN=, then legacy GETH=, else prefer an installed peercash,
+# then a local build. GETH is consumed as a SHELL variable only; run_bin strips
+# it from the binary's environment so it is never seen as a config env var (the
+# node warns "Unknown config environment variable envvar=GETH" otherwise).
+BIN="${BIN:-${GETH:-}}"
+if [ -z "$BIN" ]; then
+  if [ -x /usr/local/bin/peercash ]; then
+    BIN=/usr/local/bin/peercash
+  else
+    BIN="$HERE/../build/geth-randomx"
+  fi
+fi
 GENESIS="${GENESIS:-$HERE/genesis.json}"
 RUNS="${RUNS:-5}"
 MINE_TIMEOUT="${MINE_TIMEOUT:-600}"
 EXPECT_CHAINID=620156
 
+# Run the node binary with GETH stripped from its environment (shell-only var).
+run_bin() { env -u GETH "$BIN" "$@"; }
+
 fail() { echo "FAIL: $*" >&2; exit 1; }
 info() { echo ">> $*"; }
 
-[ -x "$GETH" ] || fail "geth binary not found/executable at: $GETH (build it first, or set GETH=)"
+[ -x "$BIN" ] || fail "peercash binary not found/executable at: $BIN (build it first, or set BIN=)"
 [ -f "$GENESIS" ] || fail "genesis not found at: $GENESIS"
 
 # Sanity: the genesis must be our mainnet chainId, never a testnet id.
@@ -48,8 +63,18 @@ cleanup() {
 trap cleanup EXIT
 
 extract_hash() {
-  # Pull the 32-byte genesis hash out of geth init's log output.
-  grep -iE 'genesis' "$1" | grep -oiE '0x[0-9a-f]{64}' | head -n1
+  # Pull the genesis hash out of the node's init output. This binary logs to
+  # STDERR (captured via 2>&1 at the call site) on the line:
+  #   Successfully wrote genesis state  database=chaindata hash=671661..2a6a26
+  # The hash is ABBREVIATED by common.Hash.TerminalString(): first 3 bytes, "..",
+  # then last 3 bytes (6 hex + ".." + 6 hex) -- NOT a full 0x64-hex string.
+  # Accept either the abbreviated form or a full 0x hash (whichever the build
+  # emits), keyed off the hash= field, and return it verbatim. For the
+  # determinism check this string is stable: identical genesis -> identical
+  # abbreviation every run. The "wrote genesis state" line is matched first.
+  { grep -iE 'wrote genesis state' "$1"; grep -iE 'genesis' "$1"; } \
+    | grep -oiE 'hash=(0x[0-9a-f]{64}|[0-9a-f]{6}\.\.[0-9a-f]{6})' \
+    | head -n1 | sed 's/^[Hh]ash=//'
 }
 
 ############################################
@@ -61,7 +86,7 @@ for i in $(seq 1 "$RUNS"); do
   d="$WORK/init-$i"
   log="$WORK/init-$i.log"
   mkdir -p "$d"
-  "$GETH" --datadir "$d" init "$GENESIS" >"$log" 2>&1 \
+  run_bin --datadir "$d" init "$GENESIS" >"$log" 2>&1 \
     || { cat "$log" >&2; fail "init run $i failed"; }
   h="$(extract_hash "$log")"
   [ -n "$h" ] || { cat "$log" >&2; fail "could not parse genesis hash from init run $i"; }
@@ -103,10 +128,10 @@ info "  genesis difficulty = $GENDIFF_HEX ($GENDIFF_DEC)"
 d="$WORK/mine"
 ipc="$d/geth.ipc"
 mkdir -p "$d"
-"$GETH" --datadir "$d" init "$GENESIS" >"$WORK/mine-init.log" 2>&1 \
+run_bin --datadir "$d" init "$GENESIS" >"$WORK/mine-init.log" 2>&1 \
   || { cat "$WORK/mine-init.log" >&2; fail "mine-datadir init failed"; }
 
-"$GETH" --datadir "$d" \
+run_bin --datadir "$d" \
   --networkid "$EXPECT_CHAINID" \
   --nodiscover --maxpeers 0 \
   --ipcpath "$ipc" \
@@ -121,7 +146,7 @@ while [ "$waited" -lt "$MINE_TIMEOUT" ]; do
   if ! kill -0 "$GETHPID" >/dev/null 2>&1; then
     cat "$WORK/mine.log" >&2; fail "node exited before producing a block"
   fi
-  BN="$("$GETH" attach "$ipc" --exec 'eth.blockNumber' 2>/dev/null | tr -dc '0-9')"
+  BN="$(run_bin attach "$ipc" --exec 'eth.blockNumber' 2>/dev/null | tr -dc '0-9')"
   BN="${BN:-0}"
   if [ "$BN" -ge 1 ] 2>/dev/null; then break; fi
   sleep 3
@@ -130,13 +155,23 @@ done
 
 [ "$BN" -ge 1 ] 2>/dev/null || { tail -40 "$WORK/mine.log" >&2; fail "no block mined within ${MINE_TIMEOUT}s"; }
 
-B0="$("$GETH" attach "$ipc" --exec 'eth.getBlock(0).hash' 2>/dev/null | tr -d '"'[:space:])"
-D1="$("$GETH" attach "$ipc" --exec 'eth.getBlock(1).difficulty' 2>/dev/null | tr -dc '0-9')"
-info "  block 0 hash   = $B0"
+B0="$(run_bin attach "$ipc" --exec 'eth.getBlock(0).hash' 2>/dev/null | tr -d '"' | tr -d '[:space:]')"
+D1="$(run_bin attach "$ipc" --exec 'eth.getBlock(1).difficulty' 2>/dev/null | tr -dc '0-9')"
+
+# FIRST_HASH is the ABBREVIATED hash from init logs (6hex..6hex); B0 is the FULL
+# 0x hash from the live node. Reduce B0 to the same abbreviation (first 3 + last
+# 3 bytes) before comparing, rather than requiring raw string equality.
+b0_nox="$(printf '%s' "$B0" | tr 'A-F' 'a-f')"; b0_nox="${b0_nox#0x}"
+if printf '%s' "$FIRST_HASH" | grep -qiE '^0x[0-9a-f]{64}$'; then
+  b0_cmp="0x$b0_nox"                    # init emitted a full hash too
+else
+  b0_cmp="${b0_nox:0:6}..${b0_nox: -6}" # init emitted the abbreviated form
+fi
+info "  block 0 hash   = $B0 (compare: $b0_cmp)"
 info "  block 1 number = $BN, difficulty = $D1"
 
-# Block 0 hash from a live node must match the deterministic init hash.
-[ "$B0" = "$FIRST_HASH" ] || fail "running node block-0 hash ($B0) != init hash ($FIRST_HASH)"
+# Block 0 hash from the live node must match the deterministic init hash.
+[ "$b0_cmp" = "$FIRST_HASH" ] || fail "running node block-0 hash ($B0 -> $b0_cmp) != init hash ($FIRST_HASH)"
 [ "$D1" = "$GENDIFF_DEC" ] || fail "block 1 difficulty ($D1) != genesis difficulty ($GENDIFF_DEC)"
 
 info "Phase 3 PASS: mined block $BN; block 1 difficulty matches genesis; node healthy"
