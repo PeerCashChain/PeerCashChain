@@ -28,11 +28,17 @@ ExecStart=/usr/local/bin/peercash \
   --networkid 620156 \
   --port 30303 \
   --nat extip:REPLACE_MAINNET_PUBLIC_IP \
-  --http --http.addr 0.0.0.0 --http.port 8545 \
+  --http --http.addr 127.0.0.1 --http.port 8545 \
   --http.api eth,net,web3 \
-  --http.corsdomain "*" --http.vhosts "*" \
+  --http.vhosts localhost \
   --mine --miner.etherbase REPLACE_MAINNET_ETHERBASE_ADDRESS \
   --verbosity 3
+# RPC is bound to localhost ONLY (secure by default). To serve public RPC, put a
+# reverse proxy (nginx/caddy) in front of 127.0.0.1:8545 with TLS, rate limiting,
+# and a firewall -- do NOT bind --http.addr 0.0.0.0 with --http.vhosts "*"
+# (that disables DNS-rebind protection and exposes the node directly). If the
+# proxy terminates on a hostname, set --http.vhosts to that hostname, and add
+# --http.corsdomain only for the specific browser origins that need it.
 Restart=always
 RestartSec=5
 LimitNOFILE=65535

@@ -1,21 +1,30 @@
-# duchain
+# PeerCash
 
-**duchain** is a fork of [go-ethereum](https://github.com/ethereum/go-ethereum)
-(currently rebased on **v1.17.4**) that replaces the post-merge Proof-of-Stake
-consensus with a standalone **RandomX Proof-of-Work** engine. It keeps the
-standard Ethereum EVM, state machine, and JSON-RPC/tooling, and runs as an
-independent, PoW-secured chain — no beacon chain, no consensus client, no
-staking.
+**PeerCash** is a sovereign, CPU-mineable, EVM-compatible Layer 1: a fork of
+[go-ethereum](https://github.com/ethereum/go-ethereum) (currently rebased on
+**v1.17.4**) that replaces post-merge Proof-of-Stake with a standalone
+**RandomX Proof-of-Work** engine. It keeps the standard Ethereum EVM, state
+machine, and JSON-RPC, so MetaMask, ethers.js, Foundry, Blockscout, and every
+standard EVM tool work out of the box — while running as an independent,
+PoW-secured chain with no beacon chain, no consensus client, and no staking.
 
-The mainnet built with this code is **Ducros** (ticker **DUC**, chainId
-**271017**) — its genesis is baked directly into the binary
+The thesis: **sound money you mine yourself on a normal computer.** Fair launch,
+no premine, no VC allocation, **21,000,000 PEER** hard cap.
+
+- **Native currency:** PEER (18 decimals)
+- **Consensus:** RandomX PoW, LWMA retarget (~12s target block time, 60-block window)
+- **Block reward:** 1 PEER initial, halving every 10,500,000 blocks, converging to a 21,000,000 PEER hard cap
+- **Mainnet chainId:** 620156
+- **Testnet chainId:** 563321
+- **Supply:** no premine — genesis alloc is empty; all supply comes from mining
+
+The mainnet genesis is baked directly into the binary
 (`params.MainnetChainConfig`), the same way upstream go-ethereum embeds real
-Ethereum mainnet, so there's no launch-scripts folder or genesis file to run:
-just `geth-randomx` with plain flags, like real geth. A separate `testnet/`
-(chainId 61102, file-based genesis) exists for development/testing.
+Ethereum mainnet, and a matching [`mainnet/genesis.json`](mainnet/genesis.json)
+is published so anyone can verify the embedded parameters and the genesis hash.
 
-> ⚠️ **Status: unaudited.** Do not attach real economic value without reading
-> [`SECURITY_REVIEW.md`](SECURITY_REVIEW.md) for the current security posture.
+> ⚠️ **Status: pre-mainnet, unaudited.** Do not attach real economic value yet.
+> See [`SECURITY_REVIEW.md`](SECURITY_REVIEW.md) for the current security posture.
 
 ## What's different from upstream go-ethereum
 
@@ -27,67 +36,66 @@ just `geth-randomx` with plain flags, like real geth. A separate `testnet/`
   60-block averaging window.
 - **Total-difficulty fork-choice** — reorgs happen on heaviest-chain (summed
   PoW), like pre-merge Ethereum, instead of LMD-GHOST/finality.
-- **Fixed, perpetual block reward** — 9 DUC per block, forever (Ethereum
-  PoW-style issuance, no halving, no supply cap).
-- **Optional treasury fee split** — genesis can route a fixed percentage of
-  the priority fee and/or base fee to configured treasury addresses instead of
-  paying it all to the miner / burning it. Opt-in, off by default.
+- **Capped, halving block reward** — 1 PEER per block initially, halving every
+  10,500,000 blocks, converging to a fixed 21,000,000 PEER supply cap.
+- **Fair-launch fee policy** — mainnet runs full EIP-1559 base-fee burn with
+  **no treasury skim**. (An optional treasury fee-split exists in the code but is
+  disabled on mainnet: the genesis `"randomx": {}` leaves it off.)
 - **Validator pinning** (`core/types/validator_pin.go`) — a transaction can pin
-  itself to a specific validator/coinbase, making it valid only inside a block
-  mined by that exact address.
+  itself to a specific coinbase, making it valid only inside a block mined by
+  that exact address.
 - **Announcement hardening** (`eth/announce_guard.go`) — guards against
   malicious/premature block and transaction announcements from peers.
-- **Multi-node testnet tooling** (`testnet/`) — ready-to-run bootnode/miner/
-  node scripts for standing up a small public or private RandomX network.
+- **Multi-node testnet tooling** (`testnet/`) — ready-to-run bootnode/miner/node
+  scripts for standing up a small RandomX network.
 
 ## Quick start
 
-Requires `librandomx` installed — see
-[`consensus/randomx/README.md`](consensus/randomx/README.md).
+Requires `librandomx` installed and the pinned Go toolchain (`go1.24.0`; a newer
+Go breaks a runtime-internal dependency — see [`mainnet/README.md`](mainnet/README.md)).
 
 ```bash
-CGO_ENABLED=1 go build -tags randomx -o build/geth-randomx ./cmd/geth
+CGO_ENABLED=1 GOTOOLCHAIN=go1.24.0 go build -tags randomx -o build/geth-randomx ./cmd/geth
 ```
 
-### Ducros (DUC) mainnet
+The resulting binary is installed on nodes as `/usr/local/bin/peercash`.
 
-No genesis file, no `--networkid` (it auto-derives from the embedded chainId
-271017), no launch scripts — same as running plain `geth` on real Ethereum
-mainnet. Open P2P port 30303 (TCP+UDP) on the firewall of any host you run
-this on.
+### Mainnet (chainId 620156)
+
+No genesis file to pass and no `--networkid` needed (both auto-derive from the
+embedded chainId). Open P2P port 30303 (TCP+UDP) on the firewall of any host you
+run this on. A production systemd unit is provided at
+[`deploy/peercash-mainnet.service`](deploy/peercash-mainnet.service) (secure by
+default: RPC bound to localhost — put a reverse proxy in front for public RPC).
 
 ```bash
-# One-time: only whoever hosts the network's stable entry point runs this.
-# Once params.MainnetBootnodes is populated with a real server, nobody else needs to.
-./build/geth-randomx --datadir ~/.duchain-boot --port 30303 --nat extip:<public-ip>
-
-# Get its enode (send it to be baked into params/bootnodes.go as MainnetBootnodes):
-./build/geth-randomx attach --exec admin.nodeInfo.enode ~/.duchain-boot/geth.ipc
-
-# A mining node (until MainnetBootnodes is populated, add --bootnodes <enode> from above):
-./build/geth-randomx --datadir ~/.duchain --port 30303 --nat extip:<this-host-ip> \
+# A mining node (all supply comes from mining; mine to your own address):
+peercash --datadir ~/.peercash-mainnet --port 30303 --nat extip:<this-host-ip> \
   --mine --miner.etherbase 0xYourAddress
 
-# A non-mining full node with JSON-RPC (e.g. for MetaMask/explorers):
-./build/geth-randomx --datadir ~/.duchain-node --port 30303 --nat extip:<this-host-ip> \
-  --http --http.addr 0.0.0.0 --http.port 8545 --http.api eth,net,web3,txpool
+# A non-mining full node with JSON-RPC, localhost-only (front with a proxy to expose):
+peercash --datadir ~/.peercash-mainnet --port 30303 --nat extip:<this-host-ip> \
+  --http --http.addr 127.0.0.1 --http.port 8545 --http.api eth,net,web3 --http.vhosts localhost
 ```
 
 - `GETH_RANDOMX_THREADS=N` — mining threads (each light-mode thread holds ~256 MiB). Default: one per CPU.
 - `GETH_RANDOMX_FULLMEM=1` — fast full-dataset mining (~2.3 GiB RAM), much faster hashing.
 
-### Testnet
+Public infrastructure (planned): `rpc.peercash.io` (RPC) and
+`explorer.peercash.io` (Blockscout).
 
-See [`testnet/README.md`](testnet/README.md) — file-based genesis (chainId
-**61102**), meant for development/iteration before anything lands on mainnet.
+### Testnet (chainId 563321)
+
+See [`testnet/README.md`](testnet/README.md) — a separate network for
+development and iteration before anything lands on mainnet. Testnet and mainnet
+use strictly separate datadirs, services, and chainIds; never mix their configs.
 
 ## Security
 
 The RandomX PoW verification and total-difficulty fork-choice paths have been
-reviewed and no exploitable HIGH/MEDIUM finding was identified (see
-[`SECURITY_REVIEW.md`](SECURITY_REVIEW.md)). Known gaps before any real
-deployment: peer-facing anti-DoS hardening is partial, and there has been no
-independent external audit.
+reviewed (see [`SECURITY_REVIEW.md`](SECURITY_REVIEW.md)). Known gaps before any
+real deployment: peer-facing anti-DoS hardening is partial, and there has been
+no independent external audit.
 
 ## License
 

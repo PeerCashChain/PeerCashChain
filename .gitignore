@@ -12,3 +12,14 @@ data/
 RandomX/
 build/bin/
 .claude/settings.local.json
+
+# secrets / node identity / operational artifacts
+nodekey
+*.key
+.env
+*.log
+
+# live datadirs (never commit chain data or node keys within them)
+.peercash-mainnet/
+.peercash-testnet/
+.ethereum/
