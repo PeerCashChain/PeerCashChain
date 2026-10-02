@@ -65,9 +65,12 @@ binary from source, so the toolchain is pinned:
   (pure-Go stub) only for compile checks, not for mining/validation.
 - Verify the binary: `build/geth-randomx version`.
 
-(Follow-up for full reproducibility: add a `toolchain go1.24.0` line to `go.mod`
-or vendor a swiss version compatible with newer Go, so the pin is automatic. Out
-of scope here -- flagged for a separate task.)
+(Note: a `toolchain go1.24.0` line in `go.mod` does NOT fix this -- a toolchain
+directive is a floor, not a cap, so a newer local Go under `GOTOOLCHAIN=auto` is
+still used (and it also broke `go build` here). The reliable pin is the
+`GOTOOLCHAIN=go1.24.0` env var shown above, enforced in build scripts/CI. Full
+automatic reproducibility would require vendoring a swiss version compatible with
+newer Go -- out of scope.)
 
 ## Launch (after genesis is verified and frozen)
 One-time init (datadir must be empty), then run under systemd:
@@ -86,8 +89,33 @@ sudo systemctl enable --now peercash-mainnet
   (`REPLACE_MAINNET_ETHERBASE_ADDRESS`) in the service file.
 - Domains: rpc.peercash.io / ws / explorer.peercash.io.
 
-## Verify before trusting (RULE 4)
+## Genesis verification (FROZEN -- immutable)
+The mainnet genesis is frozen. Any node on the real PeerCash mainnet MUST produce
+exactly these values; if yours differ, you are NOT on the real chain.
+
+| Artifact | Value |
+| --- | --- |
+| chainId | `620156` |
+| Difficulty | `0x400` (1024) |
+| extraData | empty (`0x`) |
+| alloc | empty (no premine) |
+| **Genesis block hash** | `0x40574acbb80c928e5484f9d22672e85f2cb168235a0864c10e8f35bd57a55ff1` |
+| **`genesis.json` SHA256** | `233bec9c33063535bb40e1672aff61271e88128d9aa5fbbc36c5a12fee845385` |
+
+Verify your copy of this file:
+```bash
+sha256sum mainnet/genesis.json
+# expect: 233bec9c33063535bb40e1672aff61271e88128d9aa5fbbc36c5a12fee845385
+```
+Verify the live chain's genesis block hash matches:
+```bash
+peercash attach <ipc> --exec 'eth.getBlock(0).hash'
+# expect: 0x40574acbb80c928e5484f9d22672e85f2cb168235a0864c10e8f35bd57a55ff1
+```
+The same hash is pinned in the binary as `params.MainnetGenesisHash`
+(`params/config.go`) and matches `DefaultGenesisBlock()`.
+
+## Re-verify from scratch (RULE 4)
 ```bash
 ./test-genesis.sh        # determinism + empty alloc + mines block 1 at genesis difficulty
 ```
-Then freeze `genesis.json`, record its SHA256, and treat it as immutable.

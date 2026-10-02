@@ -28,12 +28,12 @@ import (
 
 // Genesis hashes to enforce below configs on.
 var (
-	// TODO(freeze): NOT REAL. The all-zero value below is a deliberate sentinel,
-	// not the genesis hash. Set this only after the mainnet genesis is frozen:
-	// run mainnet/test-genesis.sh, take the resulting genesis block hash, and
-	// record it here, then rebuild. Do not guess -- a plausible-but-wrong hash
-	// would break genesis validation.
-	MainnetGenesisHash = common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")
+	// FROZEN mainnet genesis hash. Produced by the frozen mainnet/genesis.json
+	// (chainId 620156, empty extraData, difficulty 0x400, empty alloc; SHA256
+	// 233bec9c33063535bb40e1672aff61271e88128d9aa5fbbc36c5a12fee845385). This
+	// must match DefaultGenesisBlock()/mainnet/genesis.json exactly -- do not
+	// change it or the genesis parameters independently of each other.
+	MainnetGenesisHash = common.HexToHash("0x40574acbb80c928e5484f9d22672e85f2cb168235a0864c10e8f35bd57a55ff1")
 	HoleskyGenesisHash = common.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
 	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
 	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
