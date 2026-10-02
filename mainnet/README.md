@@ -17,7 +17,8 @@ systemd service, or (if co-located) P2P port with testnet.
 ## Proposed parameters
 - chainId / networkId: **620156** (claimed/verified free in the ethereum-lists registry).
 - Consensus: RandomX PoW with LWMA retarget (target **12 s/block**, window **60**).
-- Genesis difficulty: **0x100** (256) -- see "Difficulty" below.
+- Genesis difficulty: **0x400** (1024) -- calibrated for ~12 s blocks at single-box
+  CPU hashrate; see "Difficulty" below.
 - Block reward: **1 PEER**, halving every **10,500,000** blocks, converging to the
   **21,000,000 PEER** hard cap. (Enforced in `consensus/randomx`, chain-wide.)
 - Fees: full EIP-1559 base-fee burn, **no treasury skim** (`"randomx": {}`).
@@ -31,20 +32,22 @@ This genesis agrees with the binary's compiled-in `MainnetChainConfig`
 behaves identically whether launched from this `genesis.json` or the compiled-in
 default.
 
-## Difficulty (why 0x100)
+## Difficulty (why 0x400)
 During the first 60 blocks the LWMA retarget has no window yet and simply holds
 the genesis difficulty, so **block 1 mines at exactly the genesis difficulty**;
 only from block 61 does the retarget steer toward the 12 s target. The genesis
 value therefore sets the solve time of the first ~60 blocks.
 
-`0x100` (256) is sized for the very low RandomX hashrate available at launch (one
-to a few modest CPU boxes). Earlier values were too high and stalled startup: a
-2-core box mining flat out (both cores pegged) could not find block 1 within
-5+ minutes at `0x20000` (131072), and still could not at `0x2000` (8192). `0x100`
-brings first-block solve time back into range for launch-scale hardware. The
-error is self-correcting either way: set it too low and the first blocks mine
-fast until LWMA raises it; too high and the warmup is slow until LWMA lowers it --
-neither is dangerous. Final call is yours.
+`0x400` (1024) is the **calibrated** value: on a single 2-core box, LWMA settled at
+~1000 for 12 s blocks, so the genesis difficulty is set to the clean round value
+0x400 at that calibrated point. This replaces an earlier `0x100` (256) workaround,
+which was chosen while mining was mis-configured (sealing to a placeholder
+etherbase never produced a block, which looked like a difficulty problem); with a
+real miner account, 256 produced ~3 s blocks and LWMA raised difficulty ~4x to
+reach the 12 s target. Starting at 0x400 hits steady state from block ~61 without
+a warmup ramp. The error is self-correcting either way: set it too low and the
+first blocks mine fast until LWMA raises it; too high and the warmup is slow until
+LWMA lowers it -- neither is dangerous. Final call is yours.
 
 ## Building from source (reproducible)
 Fair-launch credibility depends on anyone being able to build and verify the

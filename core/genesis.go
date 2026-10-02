@@ -640,7 +640,7 @@ func EnableUBTAtGenesis(db ethdb.Database, genesis *Genesis) (bool, error) {
 
 // DefaultGenesisBlock returns the PeerCash RandomX mainnet genesis block.
 // It is kept byte-identical to mainnet/genesis.json (chainId 620156, empty
-// extraData, difficulty 0x100, empty alloc) so a node produces the same
+// extraData, difficulty 0x400, empty alloc) so a node produces the same
 // genesis whether launched from the compiled-in default or that JSON.
 func DefaultGenesisBlock() *Genesis {
 	return &Genesis{
@@ -648,7 +648,7 @@ func DefaultGenesisBlock() *Genesis {
 		Nonce:      0,
 		ExtraData:  []byte{}, // empty: no premine message, matches mainnet/genesis.json
 		GasLimit:   0x1c9c380,
-		Difficulty: big.NewInt(0x100),
+		Difficulty: big.NewInt(0x400),
 		Alloc:      GenesisAlloc{}, // no pre-mine: all supply comes from mining
 	}
 }
